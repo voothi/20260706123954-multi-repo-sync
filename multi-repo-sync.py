@@ -23,6 +23,7 @@ GIT_REMOTE = "origin"
 PUSH_TAGS = True  # Whether to push tags to remote origin repository by default
 LOG_COMMIT_VAL = "both"  # Options: "hash" (commit hash), "msg" (commit message/ZID), "both" (hash (msg))
 LOG_FORMAT = "code"  # Options: "table" (Markdown table), "code" (Fenced code block text), "log" (Plain text log line)
+LOG_NEWLINE = "lf"  # Options: "auto" (OS default), "lf" (\n), "crlf" (\r\n)
 DEFAULT_CWD = r"U:\voothi\20260629183335-kardenwort-desk"   # Default working directory context (None means use shell's current directory)
 DEFAULT_TAG_NAME_TEMPLATE = "{zid}-snapshot-desk"
 DEFAULT_TAG_MSG_TEMPLATE = "Coordinated snapshot {zid} to desk"
@@ -224,6 +225,8 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
     import datetime
     log_path = Path(log_path_str)
     
+    newline_char = None if LOG_NEWLINE == "auto" else ("\r\n" if LOG_NEWLINE == "crlf" else "\n")
+    
     # 1. Resolve log_format orthogonally: fall back to file suffix if format is not explicitly passed
     resolved_format = log_format
     if resolved_format is None:
@@ -294,7 +297,7 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
         log_path.parent.mkdir(parents=True, exist_ok=True)
         
         if resolved_format in ("log", "table"):
-            with open(log_path, "a", encoding="utf-8", newline="\n") as f:
+            with open(log_path, "a", encoding="utf-8", newline=newline_char) as f:
                 if resolved_format == "log":
                     # Flat single-line log format (perfect for sorting by ZID)
                     parts = [f"{tag_name}", f"[{date_str}]"]
@@ -342,7 +345,7 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
             # Parse existing sections to maintain chronological TOC
             sections = []
             if log_path.exists() and log_path.stat().st_size > 0:
-                with open(log_path, "r", encoding="utf-8", newline="\n") as f:
+                with open(log_path, "r", encoding="utf-8", newline=newline_char) as f:
                     content = f.read()
                 parts = content.split("## Release ")
                 for part in parts[1:]:
@@ -406,7 +409,7 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
             })
             
             # Write the reconstructed document back to the file
-            with open(log_path, "w", encoding="utf-8", newline="\n") as f:
+            with open(log_path, "w", encoding="utf-8", newline=newline_char) as f:
                 f.write("# Multi-Repo Sync History\n\n")
                 f.write("## Table of Contents\n")
                 for s in sections:
