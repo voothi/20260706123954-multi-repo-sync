@@ -294,7 +294,7 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
         log_path.parent.mkdir(parents=True, exist_ok=True)
         
         if resolved_format in ("log", "table"):
-            with open(log_path, "a", encoding="utf-8") as f:
+            with open(log_path, "a", encoding="utf-8", newline="\n") as f:
                 if resolved_format == "log":
                     # Flat single-line log format (perfect for sorting by ZID)
                     parts = [f"{tag_name}", f"[{date_str}]"]
@@ -342,7 +342,7 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
             # Parse existing sections to maintain chronological TOC
             sections = []
             if log_path.exists() and log_path.stat().st_size > 0:
-                with open(log_path, "r", encoding="utf-8") as f:
+                with open(log_path, "r", encoding="utf-8", newline="\n") as f:
                     content = f.read()
                 parts = content.split("## Release ")
                 for part in parts[1:]:
@@ -406,7 +406,7 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
             })
             
             # Write the reconstructed document back to the file
-            with open(log_path, "w", encoding="utf-8") as f:
+            with open(log_path, "w", encoding="utf-8", newline="\n") as f:
                 f.write("# Multi-Repo Sync History\n\n")
                 f.write("## Table of Contents\n")
                 for s in sections:
