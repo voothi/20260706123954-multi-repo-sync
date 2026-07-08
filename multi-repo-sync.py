@@ -201,16 +201,16 @@ def cmd_tag(args):
             continue
             
         # Create annotated tag
-        _, err = run_git(path, ["tag", "-a", tag_name, "-m", tag_msg])
-        if err:
+        out_tag, err = run_git(path, ["tag", "-a", tag_name, "-m", tag_msg])
+        if out_tag is None:
             print(f"{name}: Error - Failed to tag ({err})")
             success = False
         else:
             print(f"{name}: Tag complete")
             if args.push:
                 print(f"{name}: Pushing tag [remote={GIT_REMOTE}]...")
-                _, err_push = run_git(path, ["push", GIT_REMOTE, tag_name])
-                if err_push and "error:" in err_push:
+                out_push, err_push = run_git(path, ["push", GIT_REMOTE, tag_name])
+                if out_push is None:
                     print(f"{name}: Error - Failed to push tag ({err_push})")
                 else:
                     print(f"{name}: Push complete")
@@ -458,8 +458,8 @@ def cmd_checkout(args):
         if args.force:
             cmd.append("-f")
             
-        _, err = run_git(path, cmd)
-        if err and "error:" in err:
+        out_checkout, err = run_git(path, cmd)
+        if out_checkout is None:
             print(f"{name}: Error - Failed to checkout ({err})")
         else:
             print(f"{name}: Checkout complete")
@@ -475,8 +475,8 @@ def cmd_delete(args):
         if not os.path.exists(path):
             continue
             
-        _, err = run_git(path, ["tag", "-d", tag_name])
-        if err and "error:" in err:
+        out_delete, err = run_git(path, ["tag", "-d", tag_name])
+        if out_delete is None:
             print(f"{name}: Error - Failed to delete tag ({err})")
         else:
             print(f"{name}: Delete complete")
@@ -523,14 +523,14 @@ def cmd_commit(args):
         print(f"\n{name}: Staging changes and committing...")
         
         # Stage all changes (add untracked and modified)
-        _, err_add = run_git(path, ["add", "-A"])
-        if err_add:
+        out_add, err_add = run_git(path, ["add", "-A"])
+        if out_add is None:
             print(f"{name}: Error - Failed to stage changes ({err_add})")
             continue
             
         # Commit with resolved message
-        _, err_commit = run_git(path, ["commit", "-m", commit_msg])
-        if err_commit and "error:" in err_commit:
+        out_commit, err_commit = run_git(path, ["commit", "-m", commit_msg])
+        if out_commit is None:
             print(f"{name}: Error - Failed to commit ({err_commit})")
         else:
             print(f"{name}: Commit complete [msg={commit_msg}]")
