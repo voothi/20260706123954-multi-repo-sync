@@ -12,6 +12,7 @@ REPOS = {
     "autohotkey": r"U:\voothi\20240411110510-autohotkey",
     "kardenwort-core": r"U:\voothi\20241223170748-kardenwort",
     "oxford-3000-5000": r"U:\voothi\20260715190122-oxford-3000-5000",
+    "german-5000": r"U:\voothi\20260716201616-german-5000",
     "goldendict": r"U:\voothi\20260113230706-goldendict",
     "deep-translator": r"U:\voothi\20241122093311-deep-translator",
     "deep-translator": r"U:\voothi\20260209094544-deep-translator",
