@@ -50,6 +50,7 @@ DEFAULT_LOG_FILENAME = "multi-repo-sync.md"
 DEFAULT_LOG_PATHS = [r"U:\voothi.vault\multi-repo-sync.md"]    # Default log paths to record sync history if -l/--log-file is omitted (e.g. [r"U:\voothi.vault\multi-repo-sync.md"])
 GIT_REMOTE = "origin"
 PUSH_TAGS = True  # Whether to push tags to remote origin repository by default
+DELETE_REMOTE_TAGS = True  # Whether to delete tags from remote origin repository by default when deleting
 LOG_COMMIT_VAL = "both"  # Options: "hash" (commit hash), "msg" (commit message/ZID), "both" (hash (msg))
 LOG_FORMAT = "code"  # Options: "table" (Markdown table), "code" (Fenced code block text), "log" (Plain text log line)
 LOG_NEWLINE = "lf"  # Options: "auto" (OS default), "lf" (\n), "crlf" (\r\n)
@@ -512,6 +513,14 @@ def cmd_delete(args):
             print(f"{name}: Error - Failed to delete tag ({err})")
         else:
             print(f"{name}: Delete complete")
+            
+        if args.push:
+            print(f"{name}: Deleting remote tag [remote={GIT_REMOTE}]...")
+            out_push, err_push = run_git(path, ["push", GIT_REMOTE, "--delete", tag_name])
+            if out_push is None:
+                print(f"{name}: Error - Failed to delete remote tag ({err_push})")
+            else:
+                print(f"{name}: Remote delete complete")
 
 def cmd_commit(args):
     print("sync: Evaluating repositories for commit...")
@@ -610,6 +619,9 @@ subcommand options:
     -f, --force               Force tag creation without confirmation on dirty worktrees.
     -p, --push                Push tags to remote origin repository (default: PUSH_TAGS).
     --no-push                 Do not push tags to remote origin repository.
+  delete
+    -p, --push                Delete tags from remote origin repository (default: DELETE_REMOTE_TAGS).
+    --no-push                 Do not delete tags from remote origin repository.
   checkout
     -f, --force               Force checkout (discarding local changes).
         """,
@@ -655,12 +667,17 @@ subcommand options:
     # delete subcommand
     parser_delete = subparsers.add_parser("delete", help="Delete a specific tag across all repositories.")
     parser_delete.add_argument("name", help="Tag name to delete.")
+    parser_delete.add_argument("-p", "--push", action="store_true", default=None, help="Delete tags from remote origin repository (default: DELETE_REMOTE_TAGS).")
+    parser_delete.add_argument("--no-push", action="store_false", dest="push", help="Do not delete tags from remote origin repository.")
     
     args = parser.parse_args()
     
     # Resolve default push setting if omitted from CLI
     if hasattr(args, "push") and args.push is None:
-        args.push = PUSH_TAGS
+        if args.command == "delete":
+            args.push = DELETE_REMOTE_TAGS
+        else:
+            args.push = PUSH_TAGS
         
     # Resolve default log files if omitted from CLI
     if hasattr(args, "log_file") and not args.log_file:
