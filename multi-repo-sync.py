@@ -66,8 +66,10 @@ LOG_TAGS_MAX_LEN = 3   # Maximum character length for tags column in log files (
 LOG_TAGS_MAX_COUNT = 3  # Maximum number of tags to show in log files (None or 0 for unlimited)
 STATUS_COLUMNS = ["REPOSITORY", "STATUS", "COMMIT", "MESSAGE", "TAGS"]  # Options: "REPOSITORY", "STATUS", "BRANCH", "COMMIT", "TAGS", "MESSAGE"
 LOG_COLUMNS = ["REPOSITORY", "STATUS", "BRANCH", "COMMIT", "MESSAGE", "TAGS"]  # Options: "REPOSITORY", "STATUS", "BRANCH", "COMMIT", "TAGS", "MESSAGE"
-DEFAULT_TEST_COMMAND = r"pytest.exe tests\ -v"
-REPO_TEST_COMMANDS = {}
+DEFAULT_TEST_COMMAND = r".\venv\Scripts\pytest.exe tests\ -q"
+REPO_TEST_COMMANDS = {
+    "intellifiller": r"..\20260629183335-kardenwort-desk\venv\Scripts\pytest.exe tests\ -q",
+}
 AUTO_SKIP_TESTS_IF_NO_DIR = True
 SYNC_REQUIRE_TESTS = True
 
