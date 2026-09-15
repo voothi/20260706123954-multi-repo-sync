@@ -67,9 +67,10 @@ LOG_TAGS_MAX_COUNT = 3  # Maximum number of tags to show in log files (None or 0
 STATUS_COLUMNS = ["REPOSITORY", "STATUS", "COMMIT", "MESSAGE", "TAGS"]  # Options: "REPOSITORY", "STATUS", "BRANCH", "COMMIT", "TAGS", "MESSAGE"
 LOG_COLUMNS = ["REPOSITORY", "STATUS", "BRANCH", "COMMIT", "MESSAGE", "TAGS"]  # Options: "REPOSITORY", "STATUS", "BRANCH", "COMMIT", "TAGS", "MESSAGE"
 DEFAULT_TEST_COMMAND = r".\venv\Scripts\pytest.exe tests\ -q"
+FALLBACK_TEST_COMMAND = r"python -m pytest tests\ -q"
 REPO_TEST_COMMANDS = {
-    "intellifiller": r"..\20260629183335-kardenwort-desk\venv\Scripts\pytest.exe tests\ -q",
     "autohotkey": r"python run_tests.py",
+    "deep-translator-44": r'python -m pytest tests\test_net.py tests\test_net_perf.py tests\test_cli.py tests\test_data.py tests\test_engines_registry.py tests\test_httpresponse.py tests\test_lazy_registry.py -q',
 }
 AUTO_SKIP_TESTS_IF_NO_DIR = True
 SYNC_REQUIRE_TESTS = True
@@ -589,6 +590,9 @@ def run_repo_tests(repo_name, repo_path, command_override=None):
             return "SKIPPED", "disabled in config"
     else:
         cmd_to_run = DEFAULT_TEST_COMMAND
+        local_pytest = os.path.join(repo_path, "venv", "Scripts", "pytest.exe")
+        if not os.path.exists(local_pytest):
+            cmd_to_run = FALLBACK_TEST_COMMAND
         
     if not cmd_to_run:
         return "SKIPPED", "no command specified"
@@ -600,6 +604,8 @@ def run_repo_tests(repo_name, repo_path, command_override=None):
             if tok.startswith("-"):
                 continue
             clean_tok = tok.strip("\"'").rstrip("\\/")
+            if clean_tok.lower() in ("pytest", "python", "py") or clean_tok.lower().endswith((".exe", ".py")):
+                continue
             if tok.endswith(("\\", "/")) or clean_tok.lower() in ("tests", "test") or "test" in clean_tok.lower():
                 target_path = os.path.join(repo_path, clean_tok)
                 if not os.path.exists(target_path):
