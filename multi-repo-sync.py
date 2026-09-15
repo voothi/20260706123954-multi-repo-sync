@@ -62,8 +62,8 @@ DEFAULT_COMMIT_MSG_TEMPLATE = "{zid} to desk"
 REVERSE_TAGS_ORDER = True  # Display tags starting from the latest/last (True) or alphabetical/chronological order (False)
 STATUS_TAGS_MAX_LEN = 40  # Maximum character length for tags column in status output (None for unlimited)
 STATUS_TAGS_MAX_COUNT = 3  # Maximum number of tags to show in status output (None or 0 for unlimited)
-LOG_TAGS_MAX_LEN = None   # Maximum character length for tags column in log files (None for unlimited)
-LOG_TAGS_MAX_COUNT = None  # Maximum number of tags to show in log files (None or 0 for unlimited)
+LOG_TAGS_MAX_LEN = 3   # Maximum character length for tags column in log files (None for unlimited)
+LOG_TAGS_MAX_COUNT = 3  # Maximum number of tags to show in log files (None or 0 for unlimited)
 STATUS_COLUMNS = ["REPOSITORY", "STATUS", "COMMIT", "MESSAGE", "TAGS"]  # Options: "REPOSITORY", "STATUS", "BRANCH", "COMMIT", "TAGS", "MESSAGE"
 LOG_COLUMNS = ["REPOSITORY", "STATUS", "BRANCH", "COMMIT", "MESSAGE", "TAGS"]  # Options: "REPOSITORY", "STATUS", "BRANCH", "COMMIT", "TAGS", "MESSAGE"
 
