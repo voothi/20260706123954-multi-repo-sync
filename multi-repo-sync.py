@@ -66,6 +66,10 @@ LOG_TAGS_MAX_LEN = 3   # Maximum character length for tags column in log files (
 LOG_TAGS_MAX_COUNT = 3  # Maximum number of tags to show in log files (None or 0 for unlimited)
 STATUS_COLUMNS = ["REPOSITORY", "STATUS", "COMMIT", "MESSAGE", "TAGS"]  # Options: "REPOSITORY", "STATUS", "BRANCH", "COMMIT", "TAGS", "MESSAGE"
 LOG_COLUMNS = ["REPOSITORY", "STATUS", "BRANCH", "COMMIT", "MESSAGE", "TAGS"]  # Options: "REPOSITORY", "STATUS", "BRANCH", "COMMIT", "TAGS", "MESSAGE"
+DEFAULT_TEST_COMMAND = r"pytest.exe tests\ -v"
+REPO_TEST_COMMANDS = {}
+AUTO_SKIP_TESTS_IF_NO_DIR = True
+SYNC_REQUIRE_TESTS = True
 
 def run_git(repo_path, args):
     try:
@@ -585,7 +589,134 @@ def cmd_commit(args):
         for log_path in args.log_file:
             log_tag_to_file(last_zid, log_path, log_format=args.log_format)
 
+def run_repo_tests(repo_name, repo_path, command_override=None):
+    if not os.path.exists(repo_path):
+        return "SKIPPED", "path not found"
+        
+    # Determine test command to execute
+    if command_override:
+        cmd_to_run = command_override
+    elif repo_name in REPO_TEST_COMMANDS:
+        cmd_to_run = REPO_TEST_COMMANDS[repo_name]
+        if cmd_to_run is None:
+            return "SKIPPED", "disabled in config"
+    else:
+        cmd_to_run = DEFAULT_TEST_COMMAND
+        
+    if not cmd_to_run:
+        return "SKIPPED", "no command specified"
+        
+    # Check if target test directory exists if AUTO_SKIP_TESTS_IF_NO_DIR is enabled
+    if AUTO_SKIP_TESTS_IF_NO_DIR:
+        tokens = cmd_to_run.split()
+        for tok in tokens[1:]:
+            if tok.startswith("-"):
+                continue
+            clean_tok = tok.strip("\"'").rstrip("\\/")
+            if tok.endswith(("\\", "/")) or clean_tok.lower() in ("tests", "test") or "test" in clean_tok.lower():
+                target_path = os.path.join(repo_path, clean_tok)
+                if not os.path.exists(target_path):
+                    return "SKIPPED", "no tests dir"
+                    
+    print(f"\n{'=' * 60}")
+    print(f"[{repo_name}] {cmd_to_run}")
+    print(f"{'=' * 60}")
+    sys.stdout.flush()
+    
+    try:
+        res = subprocess.run(cmd_to_run, cwd=repo_path, shell=True)
+        if res.returncode == 0:
+            return "PASSED", None
+        else:
+            return "FAILED", f"exit code {res.returncode}"
+    except KeyboardInterrupt:
+        print(f"\n{repo_name}: Test execution interrupted by user.")
+        raise
+    except Exception as e:
+        return "FAILED", str(e)
+
+def print_test_summary(results):
+    print("\n" + "=" * 60)
+    print("TEST SUMMARY")
+    print("=" * 60)
+    
+    max_repo_len = max([len(r["repo"]) for r in results] + [10])
+    print(f"{'REPOSITORY':<{max_repo_len}}  STATUS")
+    print(f"{'-' * max_repo_len}  {'-' * 30}")
+    
+    passed_count = 0
+    failed_count = 0
+    skipped_count = 0
+    
+    for r in results:
+        repo = r["repo"]
+        status = r["status"]
+        detail = r.get("detail")
+        
+        status_str = status
+        if detail:
+            status_str += f" ({detail})"
+            
+        if status == "PASSED":
+            passed_count += 1
+        elif status == "FAILED":
+            failed_count += 1
+        elif status == "SKIPPED":
+            skipped_count += 1
+            
+        print(f"{repo:<{max_repo_len}}  {status_str}")
+        
+    print("=" * 60)
+    print(f"Total: {len(results)}, Passed: {passed_count}, Failed: {failed_count}, Skipped: {skipped_count}")
+    print("=" * 60)
+
+def execute_test_suite(target_repos, stop_on_failure=False, command_override=None):
+    results = []
+    has_failure = False
+    
+    for name, path in target_repos.items():
+        status, detail = run_repo_tests(name, path, command_override=command_override)
+        results.append({"repo": name, "status": status, "detail": detail})
+        if status == "FAILED":
+            has_failure = True
+            if stop_on_failure:
+                print("\nsync: Stop-on-failure requested. Halting further test execution.")
+                break
+                
+    print_test_summary(results)
+    return not has_failure
+
+def cmd_test(args):
+    if args.repo:
+        if args.repo not in REPOS:
+            print(f"sync: Error - Repository '{args.repo}' not found in configuration.")
+            sys.exit(1)
+        target_repos = {args.repo: REPOS[args.repo]}
+    else:
+        target_repos = REPOS
+        
+    success = execute_test_suite(
+        target_repos=target_repos,
+        stop_on_failure=args.stop_on_failure,
+        command_override=args.cmd
+    )
+    if not success:
+        sys.exit(1)
+
 def cmd_sync(args):
+    # Pre-sync test suite verification
+    if getattr(args, "test", False):
+        print("sync: Running pre-sync test suite verification...")
+        success = execute_test_suite(
+            target_repos=REPOS,
+            stop_on_failure=True,
+            command_override=None
+        )
+        if not success:
+            print("\nsync: Error - Pre-sync test verification failed. Aborting sync.")
+            sys.exit(1)
+        print("\nsync: Pre-sync test verification passed. Proceeding with sync.\n")
+        
     print("sync: Starting commit phase...")
     
     # Temporarily disable logging for commit to avoid duplicate log entries
@@ -614,6 +745,10 @@ def main():
 subcommand options:
   global
     -C, --cwd PATH            Change the working directory before running the utility. Overrides DEFAULT_CWD.
+  test
+    -r, --repo REPO           Run tests for a single specified repository.
+    -x, --stop-on-failure     Stop execution immediately on first test failure.
+    --cmd CMD                 Override the test command string to execute.
   tag / commit / sync
     -m, --message MSG         Template for tag/commit message. Use {zid} to dynamically inject the generated ZID.
     -l, --log-file PATHS...   One or more paths to history log files to record sync snapshots (defaults to DEFAULT_LOG_PATHS).
@@ -622,6 +757,9 @@ subcommand options:
     -f, --force               Force tag creation without confirmation on dirty worktrees.
     -p, --push                Push tags to remote origin repository (default: PUSH_TAGS).
     --no-push                 Do not push tags to remote origin repository.
+  sync
+    --test                    Run test suite verification before sync (default: SYNC_REQUIRE_TESTS).
+    --no-test                 Skip test suite verification before sync.
   delete
     -p, --push                Delete tags from remote origin repository (default: DELETE_REMOTE_TAGS).
     --no-push                 Do not delete tags from remote origin repository.
@@ -636,6 +774,12 @@ subcommand options:
     # status subcommand
     subparsers.add_parser("status", help="Show current branch, status, and tags across repositories.")
     
+    # test subcommand
+    parser_test = subparsers.add_parser("test", help="Run test suite across repositories.")
+    parser_test.add_argument("-r", "--repo", help="Run tests for a single specified repository.")
+    parser_test.add_argument("-x", "--stop-on-failure", action="store_true", help="Stop execution immediately on first test failure.")
+    parser_test.add_argument("--cmd", help="Override test command string to execute.")
+
     # tag subcommand
     parser_tag = subparsers.add_parser("tag", help="Create a coordinated tag across all repositories.")
     parser_tag.add_argument("name", nargs="?", help="Tag name. Defaults to current ZID if omitted.")
@@ -665,6 +809,8 @@ subcommand options:
     parser_sync.add_argument("-l", "--log-file", nargs="+", help="One or more paths to history log files to record sync snapshots (defaults to DEFAULT_LOG_PATHS).")
     parser_sync.add_argument("-p", "--push", action="store_true", default=None, help="Push tags to remote origin repository (default: PUSH_TAGS).")
     parser_sync.add_argument("--no-push", action="store_false", dest="push", help="Do not push tags to remote origin repository.")
+    parser_sync.add_argument("--test", action="store_true", default=None, help="Run test suite verification before sync (default: SYNC_REQUIRE_TESTS).")
+    parser_sync.add_argument("--no-test", action="store_false", dest="test", help="Skip test suite verification before sync.")
     parser_sync.add_argument("--log-format", choices=["table", "code", "log"], default=None, help="Logging format. Overrides LOG_FORMAT.")
     
     # delete subcommand
@@ -681,6 +827,10 @@ subcommand options:
             args.push = DELETE_REMOTE_TAGS
         else:
             args.push = PUSH_TAGS
+
+    # Resolve default test setting for sync if omitted from CLI
+    if hasattr(args, "test") and args.test is None:
+        args.test = SYNC_REQUIRE_TESTS
         
     # Resolve default log files if omitted from CLI
     if hasattr(args, "log_file") and not args.log_file:
@@ -696,6 +846,8 @@ subcommand options:
     
     if args.command == "status":
         cmd_status(args)
+    elif args.command == "test":
+        cmd_test(args)
     elif args.command == "tag":
         cmd_tag(args)
     elif args.command == "commit":
@@ -706,6 +858,7 @@ subcommand options:
         cmd_sync(args)
     elif args.command == "delete":
         cmd_delete(args)
+
 
 if __name__ == "__main__":
     main()
