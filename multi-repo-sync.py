@@ -4,6 +4,7 @@ import sys
 import time
 import argparse
 import subprocess
+import re
 from pathlib import Path
 
 # Coordinated Repositories Configuration
@@ -443,8 +444,10 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
                 f.write("# Multi-Repo Sync History\n\n")
                 f.write("## Table of Contents\n")
                 for s in sections:
-                    anchor = f"release-{s['tag']}".lower().replace(" ", "-")
-                    anchor = "".join(c for c in anchor if c.isalnum() or c in "-_")
+                    heading_text = f"Release {s['tag']} ({s['date']})"
+                    anchor = heading_text.lower()
+                    anchor = re.sub(r'[^\w\s-]', '', anchor)
+                    anchor = re.sub(r'\s+', '-', anchor.strip())
                     f.write(f"- [Release {s['tag']} ({s['date']})](#{anchor})\n")
                 f.write("\n")
                 
