@@ -69,11 +69,13 @@ LOG_COLUMNS = ["REPOSITORY", "STATUS", "BRANCH", "COMMIT", "MESSAGE", "TAGS"]  #
 DEFAULT_TEST_COMMAND = r".\venv\Scripts\pytest.exe tests\ -q"
 REPO_TEST_COMMANDS = {
     "intellifiller": r"..\20260629183335-kardenwort-desk\venv\Scripts\pytest.exe tests\ -q",
+    "autohotkey": r"python run_tests.py",
 }
 AUTO_SKIP_TESTS_IF_NO_DIR = True
 SYNC_REQUIRE_TESTS = True
+GIT_TIMEOUT = 60  # Default timeout in seconds for git subprocess operations
 
-def run_git(repo_path, args):
+def run_git(repo_path, args, timeout=GIT_TIMEOUT):
     try:
         res = subprocess.run(
             ["git"] + args,
@@ -81,15 +83,19 @@ def run_git(repo_path, args):
             capture_output=True,
             text=True,
             encoding="utf-8",
-            check=True
+            check=True,
+            timeout=timeout
         )
         return res.stdout.strip(), res.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return None, f"command timed out after {timeout}s"
     except subprocess.CalledProcessError as e:
         return None, e.stderr.strip()
 
 def get_zid():
     if not os.path.exists(ZID_SCRIPT):
         # Fallback to generating a timestamp locally if the ZID script is not found
+        print(f"sync: Warning - ZID script not found at '{ZID_SCRIPT}'. Falling back to system datetime.")
         import datetime
         return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     try:
@@ -101,7 +107,8 @@ def get_zid():
             check=True
         )
         return res.stdout.strip()
-    except Exception:
+    except Exception as e:
+        print(f"sync: Warning - Failed to execute ZID script ({e}). Falling back to system datetime.")
         import datetime
         return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
@@ -126,16 +133,17 @@ def format_tags(tags_list, max_len=None, max_tags=None):
         return joined
         
     result = []
-    current_len = 0
     for tag in tags_list_limited:
-        extra = 5 if result else 3  # ", ..." vs "..."
-        if current_len + len(tag) + extra > max_len:
+        candidate_tags = result + [tag]
+        candidate_str = ", ".join(candidate_tags) + ", ..."
+        if len(candidate_str) > max_len:
             break
         result.append(tag)
-        current_len += len(tag) + (2 if len(result) > 1 else 0)
         
     if not result:
-        return tags_list_limited[0][:max_len-3] + "..."
+        if max_len <= 3:
+            return tags_list_limited[0][:max_len]
+        return tags_list_limited[0][:max_len - 3] + "..."
         
     return ", ".join(result) + ", ..."
 
@@ -300,11 +308,6 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
             if REVERSE_TAGS_ORDER:
                 tags_list.reverse()
             hashes[name] = {
-                "status": "dirty" if dirty else "clean",
-                "branch": branch if branch else "detached",
-                "hash": commit_hash if commit_hash else "-",
-                "tags": format_tags(tags_list, max_len=LOG_TAGS_MAX_LEN, max_tags=LOG_TAGS_MAX_COUNT),
-                "msg": commit_msg if commit_msg else "-",
                 "REPOSITORY": name,
                 "STATUS": "dirty" if dirty else "clean",
                 "BRANCH": branch if branch else "detached",
@@ -314,11 +317,6 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
             }
         else:
             hashes[name] = {
-                "status": "missing",
-                "branch": "-",
-                "hash": "-",
-                "tags": "-",
-                "msg": "absent",
                 "REPOSITORY": name,
                 "STATUS": "missing",
                 "BRANCH": "-",
@@ -339,11 +337,11 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
                     # Flat single-line log format (perfect for sorting by ZID)
                     parts = [f"{tag_name}", f"[{date_str}]"]
                     for name in REPOS.keys():
-                        if hashes[name]["status"] == "missing":
+                        if hashes[name]["STATUS"] == "missing":
                             parts.append(f"{name}:absent")
                         else:
-                            c_hash = hashes[name]["hash"]
-                            c_msg = hashes[name]["msg"]
+                            c_hash = hashes[name]["COMMIT"]
+                            c_msg = hashes[name]["MESSAGE"]
                             if LOG_COMMIT_VAL == "msg":
                                 val = c_msg
                             elif LOG_COMMIT_VAL == "both":
@@ -364,11 +362,11 @@ def log_tag_to_file(tag_name, log_path_str, log_format=None):
                     
                     row_data = [tag_name, date_str]
                     for name in repo_names:
-                        if hashes[name]["status"] == "missing":
+                        if hashes[name]["STATUS"] == "missing":
                             row_data.append("absent")
                         else:
-                            c_hash = hashes[name]["hash"]
-                            c_msg = hashes[name]["msg"]
+                            c_hash = hashes[name]["COMMIT"]
+                            c_msg = hashes[name]["MESSAGE"]
                             if LOG_COMMIT_VAL == "msg":
                                 row_data.append(c_msg)
                             elif LOG_COMMIT_VAL == "both":
@@ -490,12 +488,6 @@ def cmd_checkout(args):
             print(f"{name}: Skipped (path not found)")
             continue
             
-        # Check if repo is dirty
-        dirty, _ = run_git(path, ["status", "--porcelain"])
-        if dirty and not args.force:
-            print(f"{name}: Error - Repository has uncommitted changes. Use -f to force.")
-            continue
-            
         cmd = ["checkout", tag_name]
         if args.force:
             cmd.append("-f")
@@ -522,14 +514,13 @@ def cmd_delete(args):
             print(f"{name}: Error - Failed to delete tag ({err})")
         else:
             print(f"{name}: Delete complete")
-            
-        if args.push:
-            print(f"{name}: Deleting remote tag [remote={GIT_REMOTE}]...")
-            out_push, err_push = run_git(path, ["push", GIT_REMOTE, "--delete", tag_name])
-            if out_push is None:
-                print(f"{name}: Error - Failed to delete remote tag ({err_push})")
-            else:
-                print(f"{name}: Remote delete complete")
+            if args.push:
+                print(f"{name}: Deleting remote tag [remote={GIT_REMOTE}]...")
+                out_push, err_push = run_git(path, ["push", GIT_REMOTE, "--delete", tag_name])
+                if out_push is None:
+                    print(f"{name}: Error - Failed to delete remote tag ({err_push})")
+                else:
+                    print(f"{name}: Remote delete complete")
 
 def cmd_commit(args):
     print("sync: Evaluating repositories for commit...")
@@ -561,14 +552,8 @@ def cmd_commit(args):
         if not msg_template:
             msg_template = DEFAULT_COMMIT_MSG_TEMPLATE
             
-        # To maintain perfect orthogonality with tag, commit template resolving also supports {tag_name} if passed globally
-        fallback_tag_name = getattr(args, "name", None)
-        if not fallback_tag_name:
-            fallback_tag_name = last_zid
-        else:
-            fallback_tag_name = fallback_tag_name.format(zid=last_zid)
-            
-        commit_msg = msg_template.format(zid=last_zid, tag_name=fallback_tag_name)
+        # Resolve commit message template
+        commit_msg = msg_template.format(zid=last_zid, tag_name=last_zid)
         
         print(f"\n{name}: Staging changes and committing...")
         
